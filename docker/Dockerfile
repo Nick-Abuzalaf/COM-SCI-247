@@ -1,4 +1,4 @@
-FROM ubuntu:20.04
+FROM nvidia/cuda:12.2.0-base-ubuntu20.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
@@ -23,15 +23,27 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     python3-software-properties
 
+# RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-keyring_1.0-1_all.deb
+# RUN dpkg -i cuda-keyring_1.0-1_all.deb
+# RUN apt-get update
+# RUN apt-get -y install cuda
+
 RUN curl https://bootstrap.pypa.io/get-pip.py | python3.8
 
 # Without this Python thinks we're ASCII and unicode chars fail
-ENV LANG C.UTF-8
+ENV LANG=C.UTF-8
 
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 1
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.8 1
 
-# install libraries
+# # install libraries
+# RUN pip3 install -U --no-cache-dir \
+#     torch==1.13.0 \
+#     --index-url https://download.pytorch.org/whl/cu117
+
+RUN pip3 install --no-cache-dir tensorboard==2.5.0 tensorboard-data-server==0.6.1 tensorboard-plugin-wit==1.8.0
+
+
 RUN pip3 install -U --no-cache-dir \
 	absl-py==0.12.0 \
 	cachetools==4.2.2 \
@@ -51,9 +63,10 @@ RUN pip3 install -U --no-cache-dir \
 	matplotlib==3.4.2 \
 	moverscore==1.0.3 \
 	nltk==3.6.7 \
-	numpy>=1.20.3 \
+	numpy==1.20.3 \
 	oauthlib==3.1.0 \
 	packaging==21.0 \
+	#pandas==2.2.3 \
 	Pillow==8.3.0 \
 	portalocker==2.3.0 \
 	protobuf==3.17.0 \
@@ -68,13 +81,11 @@ RUN pip3 install -U --no-cache-dir \
 	requests-oauthlib==1.3.0 \
 	rsa==4.7.2 \
 	sacremoses==0.0.45 \
+	#scikit-learn==1.6.1 \
 	sentencepiece==0.1.96 \
 	six==1.16.0 \
-	tensorboard==2.5.0 \
-	tensorboard-data-server==0.6.1 \
-	tensorboard-plugin-wit==1.8.0 \
 	tokenizers==0.8.1rc2 \
-	torch==1.8.1 \
+	torch==1.13.0 \
 	tqdm==4.60.0 \
 	transformers==3.1.0 \
 	typing==3.7.4.3 \
@@ -82,12 +93,14 @@ RUN pip3 install -U --no-cache-dir \
 	urllib3==1.26.4 \
 	Werkzeug==2.0.1
 
+
+
 # the next line will patch moverscore so that it runs on cpu, rather than on your cuda:0 device.
 # comment this line if you have access to a GPU
-RUN find . -type f -name moverscore_v2.py -exec sed -i 's/cuda:0/cpu/g' {} \;
+# RUN find . -type f -name moverscore_v2.py -exec sed -i 's/cuda:0/cpu/g' {} \;
 RUN find . -type f -name moverscore_v2.py -exec sed -i '2 i\import os' {} \;
 RUN find . -type f -name moverscore_v2.py -exec sed -i "s/model_name = 'distilbert-base-uncased'/model_name = os.environ.get('MOVERSCORE_MODEL', 'distilbert-base-uncased')/g" {} \;
 
-
 RUN python3 -c "import nltk; nltk.download('punkt');"
-RUN python3 -c "import os; os.environ['MOVERSCORE_MODEL'] = 'distilbert-base-multilingual-cased' ; import moverscore_v2"
+
+# RUN python3 -c "import os; os.environ['MOVERSCORE_MODEL'] = 'distilbert-base-multilingual-cased' ; import moverscore_v2"

@@ -260,7 +260,7 @@ class RevdictModel(nn.Module):
 
     def forward(self, gloss_tensor):
         src_key_padding_mask = gloss_tensor == self.padding_idx
-        embs = self.embedding(gloss_tensor)
+        embs = self.embedding(torch.clamp(gloss_tensor, 0, self.embedding.num_embeddings - 1))
         src = self.positional_encoding(embs)
         transformer_output = self.dropout(
             self.transformer_encoder(src, src_key_padding_mask=src_key_padding_mask.t())

@@ -6,7 +6,7 @@ import pathlib
 import pprint
 import secrets
 
-import skopt
+#import skopt
 
 import torch
 import torch.nn as nn
@@ -16,7 +16,8 @@ from torch.utils.tensorboard import SummaryWriter
 
 import tqdm
 
-import data
+import data_ngram as data
+#import data
 import models
 
 logger = logging.getLogger(pathlib.Path(__file__).name)
@@ -90,20 +91,20 @@ def get_parser(
     return parser
 
 
-def get_search_space():
-    """get hyperparmeters to optimize for"""
-    search_space = [
-        skopt.space.Real(1e-8, 1.0, "log-uniform", name="learning_rate"),
-        skopt.space.Real(0.0, 1.0, "uniform", name="weight_decay"),
-        skopt.space.Real(0.9, 1.0 - 1e-8, "log-uniform", name="beta_a"),
-        skopt.space.Real(0.9, 1.0 - 1e-8, "log-uniform", name="beta_b"),
-        skopt.space.Real(0.0, 0.9, "uniform", name="dropout"),
-        skopt.space.Real(0.0, 1.0, "uniform", name="warmup_len"),
-        skopt.space.Integer(1, 100, "log-uniform", name="batch_accum"),
-        skopt.space.Integer(0, 5, "uniform", name="n_head_pow"),
-        skopt.space.Integer(1, 6, "uniform", name="n_layers"),
-    ]
-    return search_space
+# def get_search_space():
+#     """get hyperparmeters to optimize for"""
+#     search_space = [
+#         skopt.space.Real(1e-8, 1.0, "log-uniform", name="learning_rate"),
+#         skopt.space.Real(0.0, 1.0, "uniform", name="weight_decay"),
+#         skopt.space.Real(0.9, 1.0 - 1e-8, "log-uniform", name="beta_a"),
+#         skopt.space.Real(0.9, 1.0 - 1e-8, "log-uniform", name="beta_b"),
+#         skopt.space.Real(0.0, 0.9, "uniform", name="dropout"),
+#         skopt.space.Real(0.0, 1.0, "uniform", name="warmup_len"),
+#         skopt.space.Integer(1, 100, "log-uniform", name="batch_accum"),
+#         skopt.space.Integer(0, 5, "uniform", name="n_head_pow"),
+#         skopt.space.Integer(1, 6, "uniform", name="n_layers"),
+#     ]
+#     return search_space
 
 
 def train(
@@ -328,38 +329,39 @@ def main(args):
             args.summary_logdir,
             args.save_dir,
             args.device,
+            args.spm_model_path
         )
     elif args.do_htune:
         logger.debug("Performing revdict hyperparameter tuning")
-        search_space = get_search_space()
-
-        @skopt.utils.use_named_args(search_space)
-        def gp_train(**hparams):
-            logger.debug(f"Hyperparams sampled:\n{pprint.pformat(hparams)}")
-            best_loss = train(
-                train_file=args.train_file,
-                dev_file=args.dev_file,
-                target_arch=args.target_arch,
-                summary_logdir=args.summary_logdir
-                / args.target_arch
-                / secrets.token_urlsafe(8),
-                save_dir=args.save_dir,
-                device=args.device,
-                spm_model_path=args.spm_model_path,
-                learning_rate=hparams["learning_rate"],
-                beta1=min(hparams["beta_a"], hparams["beta_b"]),
-                beta2=max(hparams["beta_a"], hparams["beta_b"]),
-                weight_decay=hparams["weight_decay"],
-                batch_accum=hparams["batch_accum"],
-                warmup_len=hparams["warmup_len"],
-                n_head=2 ** hparams["n_head_pow"],
-                n_layers=hparams["n_layers"],
-            )
-            return best_loss
-
-        result = skopt.gp_minimize(gp_train, search_space)
-        args.save_dir = args.save_dir / args.target_arch
-        skopt.dump(result, args.save_dir / "results.pkl", store_objective=False)
+        # search_space = get_search_space()
+        #
+        # @skopt.utils.use_named_args(search_space)
+        # def gp_train(**hparams):
+        #     logger.debug(f"Hyperparams sampled:\n{pprint.pformat(hparams)}")
+        #     best_loss = train(
+        #         train_file=args.train_file,
+        #         dev_file=args.dev_file,
+        #         target_arch=args.target_arch,
+        #         summary_logdir=args.summary_logdir
+        #         / args.target_arch
+        #         / secrets.token_urlsafe(8),
+        #         save_dir=args.save_dir,
+        #         device=args.device,
+        #         spm_model_path=args.spm_model_path,
+        #         learning_rate=hparams["learning_rate"],
+        #         beta1=min(hparams["beta_a"], hparams["beta_b"]),
+        #         beta2=max(hparams["beta_a"], hparams["beta_b"]),
+        #         weight_decay=hparams["weight_decay"],
+        #         batch_accum=hparams["batch_accum"],
+        #         warmup_len=hparams["warmup_len"],
+        #         n_head=2 ** hparams["n_head_pow"],
+        #         n_layers=hparams["n_layers"],
+        #     )
+        #     return best_loss
+        #
+        # result = skopt.gp_minimize(gp_train, search_space)
+        # args.save_dir = args.save_dir / args.target_arch
+        # skopt.dump(result, args.save_dir / "results.pkl", store_objective=False)
 
     if args.do_pred:
         logger.debug("Performing revdict prediction")

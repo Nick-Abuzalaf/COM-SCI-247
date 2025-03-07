@@ -344,6 +344,7 @@ def main(args):
             args.summary_logdir,
             args.save_dir,
             args.device,
+            args.spm_model_path
         )
     elif args.do_htune:
         logger.debug("Performing defmod hyperparameter tuning")

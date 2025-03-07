@@ -1,8 +1,11 @@
+import argparse
+import pathlib
 from collections import defaultdict
 from itertools import count
 import json
 import random
 import tempfile
+import typing
 
 import torch
 from torch.nn.utils.rnn import pad_sequence
@@ -16,6 +19,129 @@ PAD = "<pad/>"
 UNK = "<unk/>"
 
 SUPPORTED_ARCHS = ("sgns", "char")
+
+
+# Custom Tokenizer to encode ngrams
+# class NGramTokenizer():
+#     def __init__(self, charset, vocab, n: int = 3):
+#         self.chardict = {token: idx for idx, token in enumerate(charset)}
+#         self.vocab = vocab
+#         self.n = n
+#
+#         for i in charset:
+#             i_token = i if i.isascii() else UNK
+#             for j in charset:
+#                 j_token = j if j.isascii() else UNK
+#                 for k in charset:
+#                     k_token = k if k.isascii() else UNK
+#
+#                     token = i_token + j_token + k_token
+#
+#                     if not token in self.vocab:
+#                         self.vocab[token] = len(self.vocab)
+#
+#         # self.reverse_vocab = {}
+#         # for key in self.vocab.keys():
+#         #     self.reverse_vocab[self.vocab[key]] = key
+#
+#         self.reverse_vocab = {val: key for key, val in self.vocab.items()}
+#
+#     def encode(self, s: str) -> typing.List:
+#         if len(s) < self.n:
+#             s = str(list(s) + [PAD] * (self.n - len(s)))
+#
+#         result = []
+#         for i in range(len(s) - self.n + 1):
+#             substring = s[i:i + self.n]
+#             result.append(self.vocab[substring])
+#
+#         return result
+#
+#     def decode(self, l: typing.List) -> str:
+#         s = ""
+#
+#         for idx in range(len(l)):
+#             substring = self.reverse_vocab[l[idx]]
+#             s += substring[0]
+#
+#         s = s[:-1] + self.reverse_vocab[l[len(l) - 1]]
+#
+#         return s
+
+class NGramTokenizer():
+    def __init__(self, charset, vocab, n: int = 3):
+            self.chardict = {token: idx for idx, token in enumerate(charset)}
+            self.vocab = vocab
+            self.n = n
+
+            # for i in charset:
+            #     i_token = i if i.isascii() else UNK
+            #     for j in charset:
+            #         j_token = j if j.isascii() else UNK
+            #         for k in charset:
+            #             k_token = k if k.isascii() else UNK
+            #
+            #             token = i_token + j_token + k_token
+            #
+            #             if not token in self.vocab:
+            #                 self.vocab[token] = len(self.vocab)
+
+            self.reverse_vocab = {val: key for key, val in self.vocab.items()}
+
+    def encode(self, s: str) -> typing.List:
+        if len(s) < self.n:
+            substring = "".join(list(s) + [PAD] * (self.n - len(s)))
+            if not substring in self.vocab:
+                self.reverse_vocab[len(self.vocab)] = substring
+                self.vocab[substring] = len(self.vocab)
+
+            return [self.vocab[substring]]
+
+        result = []
+        for i in range(len(s) - self.n + 1):
+            substring = s[i:i+self.n]
+
+            substring = str("".join([c if c.isascii() else UNK for c in substring]))
+            # substring = str([c if c.isascii() and c.isalnum() else UNK for c in substring])
+
+            if not substring in self.vocab:
+                self.reverse_vocab[len(self.vocab)] = substring
+                self.vocab[substring] = len(self.vocab)
+            result.append(self.vocab[substring])
+
+        return result
+
+    def decode(self, l: typing.List) -> str:
+        s = ""
+
+        for idx in range(len(l)):
+            substring = self.reverse_vocab[l[idx]]
+            substring = self.split_string(substring)
+            if not substring[0] == PAD:
+                s += substring[0]
+
+        s = s[:-1] + self.reverse_vocab[l[len(l) - 1]]
+
+        return s
+
+    @staticmethod
+    def split_string(s: str) -> typing.List:
+        if "<" not in s:
+            return list(s)
+
+        split_str = s.split("<")
+
+        for i in range(1, len(split_str)):
+            split_str[i] = "<" + split_str[i]
+
+        if split_str[0] == "":
+            split_str[1:] = split_str[1:]
+
+        return split_str
+
+
+
+
 
 # A dataset is a container object for the actual data
 class JSONDataset(Dataset):
@@ -53,51 +179,22 @@ class JSONDataset(Dataset):
         )
         if freeze_vocab:
             self.vocab = dict(vocab)
+
+        self.charset = set()
         with open(file, "r") as istr:
             self.items = json.load(istr)
-        if self.use_spm:
-            if train_spm:
-                with tempfile.NamedTemporaryFile(mode="w+") as temp_fp:
-                    for gls in (j["gloss"] for j in self.items):
-                        print(gls, file=temp_fp)
-                    temp_fp.seek(0)
-                    spm.SentencePieceTrainer.train(
-                        input=temp_fp.name,
-                        model_prefix=spm_model_name,
-                        vocab_size=15000,
-                        pad_id=pad,
-                        pad_piece=PAD,
-                        eos_id=eos,
-                        eos_piece=EOS,
-                        bos_id=bos,
-                        bos_piece=BOS,
-                        unk_id=unk,
-                        unk_piece=UNK,
-                    )
-            self.spm_model = spm.SentencePieceProcessor(
-                model_file=f"{spm_model_name}.model"
-            )
-        # preparse data
+            for gls in (j["gloss"] for j in self.items):
+                self.charset.update(gls)
+
+        self.tokenizer = NGramTokenizer(self.charset, self.vocab)
+
         for json_dict in self.items:
             # in definition modeling test datasets, gloss targets are absent
             if "gloss" in json_dict:
-                if spm_model_name:
-                    json_dict["gloss_tensor"] = torch.tensor(
-                        self.spm_model.encode(
-                            json_dict["gloss"], add_eos=True, add_bos=True
-                        )
-                    )
-                else:
-                    json_dict["gloss_tensor"] = torch.tensor(
-                        [bos]
-                        + [
-                            self.vocab[word]
-                            if not freeze_vocab
-                            else self.vocab.get(word, unk)
-                            for word in json_dict["gloss"].split()
-                        ]
-                        + [eos]
-                    )
+                json_dict["gloss_tensor"] = torch.tensor(
+                    [bos] + self.tokenizer.encode(json_dict["gloss"]) + [eos]
+                )
+
                 if maxlen:
                     json_dict["gloss_tensor"] = json_dict["gloss_tensor"][:maxlen]
             # in reverse dictionary test datasets, vector targets are absent
@@ -106,11 +203,6 @@ class JSONDataset(Dataset):
                     json_dict[f"{arch}_tensor"] = torch.tensor(json_dict[arch])
             if "electra" in json_dict:
                 json_dict["electra_tensor"] = torch.tensor(json_dict["electra"])
-        if self.use_spm:
-            self.vocab = {
-                self.spm_model.id_to_piece(idx): idx
-                for idx in range(self.spm_model.get_piece_size())
-            }
 
         self.has_gloss = "gloss" in self.items[0]
         self.has_vecs = SUPPORTED_ARCHS[0] in self.items[0]
@@ -138,9 +230,12 @@ class JSONDataset(Dataset):
             ids = [i.item() for i in tensor if i != self.vocab[PAD]]
             if self.itos[ids[0]] == BOS: ids = ids[1:]
             if self.itos[ids[-1]] == EOS: ids = ids[:-1]
-            if self.use_spm:
-                return self.spm_model.decode(ids)
-            return " ".join(self.itos[i] for i in ids)
+            # if self.use_spm:
+            #     return self.spm_model.decode(ids)
+
+            #return " ".join(self.itos[i] for i in ids)
+
+            return self.tokenizer.decode(ids)
 
     def save(self, file):
         torch.save(self, file)
@@ -203,9 +298,9 @@ class TokenSampler(Sampler):
 
 # DataLoaders give access to an iterator over the dataset, using a sampling
 # strategy as defined through a Sampler.
-def get_dataloader(dataset, batch_size=20, shuffle=True):
+def get_dataloader(dataset, batch_size=200, shuffle=False):
     """produce dataloader.
-    args: `dataset` a torch.utils.data.Dataset (iterable style)
+    args: `dataset` a torch.utils.data.Dataset (iterable style)0
           `batch_size` the maximum number of tokens in a batch
           `shuffle` if True, shuffle between every iteration
     """
@@ -277,3 +372,26 @@ def get_dev_dataset(dev_file, spm_model_path, save_dir, train_dataset=None):
         )
         dataset.save(save_dir / "dev_dataset.pt")
     return dataset
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--train_file", type=pathlib.Path, help="path to the train file"
+    )
+    parser.add_argument(
+        "--save_dir",
+        type=pathlib.Path,
+        default=pathlib.Path("models") / f"revdict-baseline",
+        help="where to save model & vocab",
+    )
+    parser.add_argument(
+        "--spm_model_path",
+        type=pathlib.Path,
+        default=None,
+        help="use sentencepiece model, if required train and save it here",
+    )
+    args = parser.parse_args()
+
+    train_dataset = get_train_dataset(args.train_file, args.spm_model_path, args.save_dir)
