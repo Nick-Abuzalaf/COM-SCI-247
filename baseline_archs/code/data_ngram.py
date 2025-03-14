@@ -21,77 +21,105 @@ UNK = "<unk/>"
 SUPPORTED_ARCHS = ("sgns", "char")
 
 
-# Custom Tokenizer to encode ngrams
-# class NGramTokenizer():
-#     def __init__(self, charset, vocab, n: int = 3):
-#         self.chardict = {token: idx for idx, token in enumerate(charset)}
-#         self.vocab = vocab
-#         self.n = n
-#
-#         for i in charset:
-#             i_token = i if i.isascii() else UNK
-#             for j in charset:
-#                 j_token = j if j.isascii() else UNK
-#                 for k in charset:
-#                     k_token = k if k.isascii() else UNK
-#
-#                     token = i_token + j_token + k_token
-#
-#                     if not token in self.vocab:
-#                         self.vocab[token] = len(self.vocab)
-#
-#         # self.reverse_vocab = {}
-#         # for key in self.vocab.keys():
-#         #     self.reverse_vocab[self.vocab[key]] = key
-#
-#         self.reverse_vocab = {val: key for key, val in self.vocab.items()}
-#
-#     def encode(self, s: str) -> typing.List:
-#         if len(s) < self.n:
-#             s = str(list(s) + [PAD] * (self.n - len(s)))
-#
-#         result = []
-#         for i in range(len(s) - self.n + 1):
-#             substring = s[i:i + self.n]
-#             result.append(self.vocab[substring])
-#
-#         return result
-#
-#     def decode(self, l: typing.List) -> str:
-#         s = ""
-#
-#         for idx in range(len(l)):
-#             substring = self.reverse_vocab[l[idx]]
-#             s += substring[0]
-#
-#         s = s[:-1] + self.reverse_vocab[l[len(l) - 1]]
-#
-#         return s
+class ComprehensiveNGramTokenizer():
+    def __init__(self, charset, vocab, n: int = 3):
+        self.chardict = {token: idx for idx, token in enumerate(charset)}
+        self.vocab = vocab
+        self.n = n
 
-class NGramTokenizer():
+        for i in charset:
+            for j in charset:
+                for k in charset:
+                    token = i + j + k
+
+                    if not token in self.vocab:
+                        self.vocab[token] = len(self.vocab)
+
+        self.reverse_vocab = {val: key for key, val in self.vocab.items()}
+
+    def encode(self, s: str) -> typing.List:
+        if len(s) < self.n:
+            s = str(list(s) + [PAD] * (self.n - len(s)))
+
+        result = []
+        for i in range(len(s) - self.n + 1):
+            substring = s[i:i + self.n]
+            result.append(self.vocab[substring])
+
+        return result
+
+    def decode(self, l: typing.List) -> str:
+        s = ""
+
+        for idx in range(len(l)):
+            substring = self.reverse_vocab[l[idx]]
+            s += substring[0]
+
+        s = s[:-1] + self.reverse_vocab[l[len(l) - 1]]
+
+        return s
+
+# Custom Tokenizer to encode ngrams
+class AsciiNGramTokenizer():
+    def __init__(self, charset, vocab, n: int = 3):
+        self.chardict = {token: idx for idx, token in enumerate(charset)}
+        self.vocab = vocab
+        self.n = n
+
+        for i in charset:
+            i_token = i if i.isascii() else UNK
+            for j in charset:
+                j_token = j if j.isascii() else UNK
+                for k in charset:
+                    k_token = k if k.isascii() else UNK
+
+                    token = i_token + j_token + k_token
+
+                    if not token in self.vocab:
+                        self.vocab[token] = len(self.vocab)
+
+        self.reverse_vocab = {val: key for key, val in self.vocab.items()}
+
+    def encode(self, s: str) -> typing.List:
+        if len(s) < self.n:
+            s = str(list(s) + [PAD] * (self.n - len(s)))
+
+        result = []
+        for i in range(len(s) - self.n + 1):
+            substring = s[i:i + self.n]
+
+            if substring in self.vocab:
+                result.append(self.vocab[substring])
+            else:
+                result.append(-1)
+
+        return result
+
+    def decode(self, l: typing.List) -> str:
+        s = ""
+
+        for idx in range(len(l)):
+            substring = self.reverse_vocab[l[idx]]
+            s += substring[0]
+
+        s = s[:-1] + self.reverse_vocab[l[len(l) - 1]]
+
+        return s
+
+
+class MinimalNGramTokenizer():
     def __init__(self, charset, vocab, n: int = 3):
             self.chardict = {token: idx for idx, token in enumerate(charset)}
+
             self.vocab = vocab
-            self.n = n
-
-            # for i in charset:
-            #     i_token = i if i.isascii() else UNK
-            #     for j in charset:
-            #         j_token = j if j.isascii() else UNK
-            #         for k in charset:
-            #             k_token = k if k.isascii() else UNK
-            #
-            #             token = i_token + j_token + k_token
-            #
-            #             if not token in self.vocab:
-            #                 self.vocab[token] = len(self.vocab)
-
             self.reverse_vocab = {val: key for key, val in self.vocab.items()}
+
+            self.n = n
 
     def encode(self, s: str) -> typing.List:
         if len(s) < self.n:
             substring = "".join(list(s) + [PAD] * (self.n - len(s)))
-            if not substring in self.vocab:
+            if substring not in self.vocab:
                 self.reverse_vocab[len(self.vocab)] = substring
                 self.vocab[substring] = len(self.vocab)
 
@@ -100,14 +128,12 @@ class NGramTokenizer():
         result = []
         for i in range(len(s) - self.n + 1):
             substring = s[i:i+self.n]
-
             substring = str("".join([c if c.isascii() else UNK for c in substring]))
-            # substring = str([c if c.isascii() and c.isalnum() else UNK for c in substring])
 
-            if not substring in self.vocab:
+            if substring not in self.vocab:
                 self.reverse_vocab[len(self.vocab)] = substring
                 self.vocab[substring] = len(self.vocab)
-            result.append(self.vocab[substring])
+
 
         return result
 
@@ -140,9 +166,6 @@ class NGramTokenizer():
         return split_str
 
 
-
-
-
 # A dataset is a container object for the actual data
 class JSONDataset(Dataset):
     """Reads a CODWOE JSON dataset"""
@@ -150,22 +173,20 @@ class JSONDataset(Dataset):
     def __init__(
         self,
         file,
+        tokenizer=None,
         vocab=None,
         freeze_vocab=False,
-        maxlen=256,
-        spm_model_name=None,
-        train_spm=False,
+        maxlen=256
     ):
         """
         Construct a torch.utils.data.Dataset compatible with torch data API and
         codwoe data.
         args: `file` the path to the dataset file
+              `tokenizer` the type of ngram tokenizer to use
               `vocab` a dictionary mapping strings to indices
               `freeze_vocab` whether to update vocabulary, or just replace unknown items with OOV token
               `maxlen` the maximum number of tokens per gloss
-              `spm_model_name` create and use this sentencepiece model instead of whitespace tokenization
         """
-        self.use_spm = spm_model_name is not None
         if vocab is None:
             self.vocab = defaultdict(count().__next__)
         else:
@@ -186,7 +207,14 @@ class JSONDataset(Dataset):
             for gls in (j["gloss"] for j in self.items):
                 self.charset.update(gls)
 
-        self.tokenizer = NGramTokenizer(self.charset, self.vocab)
+        if tokenizer == "comp":
+            self.tokenizer = ComprehensiveNGramTokenizer(self.charset, self.vocab)
+        elif tokenizer == "ascii":
+            self.tokenizer = AsciiNGramTokenizer(self.charset, self.vocab)
+        elif tokenizer == "min":
+            self.tokenizer = MinimalNGramTokenizer(self.charset, self.vocab)
+        else:
+            self.tokenizer = tokenizer
 
         for json_dict in self.items:
             # in definition modeling test datasets, gloss targets are absent
@@ -230,10 +258,6 @@ class JSONDataset(Dataset):
             ids = [i.item() for i in tensor if i != self.vocab[PAD]]
             if self.itos[ids[0]] == BOS: ids = ids[1:]
             if self.itos[ids[-1]] == EOS: ids = ids[:-1]
-            # if self.use_spm:
-            #     return self.spm_model.decode(ids)
-
-            #return " ".join(self.itos[i] for i in ids)
 
             return self.tokenizer.decode(ids)
 
@@ -350,25 +374,25 @@ def get_dataloader(dataset, batch_size=200, shuffle=False):
         )
 
 
-def get_train_dataset(train_file, spm_model_path, save_dir):
+def get_train_dataset(train_file, save_dir, tokenizer):
     if (save_dir / "train_dataset.pt").is_file():
         dataset = JSONDataset.load(save_dir / "train_dataset.pt")
     else:
         dataset = JSONDataset(
             train_file,
-            spm_model_name=spm_model_path.with_suffix(""),
-            train_spm=not spm_model_path.with_suffix(".model").is_file(),
+            tokenizer
         )
         dataset.save(save_dir / "train_dataset.pt")
     return dataset
 
 
-def get_dev_dataset(dev_file, spm_model_path, save_dir, train_dataset=None):
+def get_dev_dataset(dev_file, save_dir, tokenizer):
     if (save_dir / "dev_dataset.pt").is_file():
         dataset = JSONDataset.load(save_dir / "dev_dataset.pt")
     else:
         dataset = JSONDataset(
-            dev_file, spm_model_name=spm_model_path, train_spm=False
+            dev_file,
+            tokenizer
         )
         dataset.save(save_dir / "dev_dataset.pt")
     return dataset
@@ -387,11 +411,11 @@ if __name__ == "__main__":
         help="where to save model & vocab",
     )
     parser.add_argument(
-        "--spm_model_path",
-        type=pathlib.Path,
+        "--tokenizer",
+        type=str,
         default=None,
-        help="use sentencepiece model, if required train and save it here",
+        help="Type of ngram tokenizer to use, either 'comp', 'ascii', or 'min'."
     )
     args = parser.parse_args()
 
-    train_dataset = get_train_dataset(args.train_file, args.spm_model_path, args.save_dir)
+    train_dataset = get_train_dataset(args.train_file, args.save_dir, args.tokenizer)

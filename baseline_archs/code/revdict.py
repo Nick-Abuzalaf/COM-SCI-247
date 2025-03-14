@@ -76,11 +76,17 @@ def get_parser(
         default=pathlib.Path("models") / f"revdict-baseline",
         help="where to save model & vocab",
     )
+    # parser.add_argument(
+    #     "--spm_model_path",
+    #     type=pathlib.Path,
+    #     default=None,
+    #     help="use sentencepiece model, if required train and save it here",
+    # )
     parser.add_argument(
-        "--spm_model_path",
-        type=pathlib.Path,
+        "--tokenizer",
+        type=str,
         default=None,
-        help="use sentencepiece model, if required train and save it here",
+        help="Type of ngram tokenizer to use, either 'comp', 'ascii', or 'min'."
     )
     parser.add_argument(
         "--pred_file",
@@ -114,7 +120,7 @@ def train(
     summary_logdir=pathlib.Path("logs") / "revdict-htune",
     save_dir=pathlib.Path("models") / "revdict-baseline",
     device="cuda:0",
-    spm_model_path=None,
+    tokenizer=None,
     epochs=100,
     learning_rate=1e-4,
     beta1=0.9,
@@ -129,14 +135,15 @@ def train(
 ):
     assert train_file is not None, "Missing dataset for training"
     assert dev_file is not None, "Missing dataset for development"
+    assert tokenizer is not None, "Missing tokenizer type"
     # 1. get data, vocabulary, summary writer
     logger.debug("Preloading data")
     save_dir = save_dir / target_arch
     save_dir.mkdir(parents=True, exist_ok=True)
     ## make datasets
-    train_dataset = data.get_train_dataset(train_file, spm_model_path, save_dir)
+    train_dataset = data.get_train_dataset(train_file, save_dir, tokenizer)
     dev_dataset = data.get_dev_dataset(
-        dev_file, spm_model_path, save_dir, train_dataset
+        dev_file, save_dir, tokenizer
     )
 
     ## assert they correspond to the task
@@ -293,9 +300,10 @@ def pred(args):
     assert args.test_file is not None, "Missing dataset for test"
     # 1. retrieve vocab, dataset, model
     model = models.DefmodModel.load(args.save_dir / "model.pt")
-    train_vocab = data.JSONDataset.load(args.save_dir / "train_dataset.pt").vocab
+    train_dataset = data.JSONDataset.load(args.save_dir / "train_dataset.pt")
+    train_vocab = train_dataset.vocab
     test_dataset = data.JSONDataset(
-        args.test_file, vocab=train_vocab, freeze_vocab=True, maxlen=model.maxlen
+        args.test_file, tokenizer=train_dataset.tokenizer, vocab=train_vocab, freeze_vocab=True, maxlen=model.maxlen
     )
     test_dataloader = data.get_dataloader(test_dataset, shuffle=False, batch_size=1024)
     model.eval()
@@ -329,7 +337,7 @@ def main(args):
             args.summary_logdir,
             args.save_dir,
             args.device,
-            args.spm_model_path
+            args.tokenizer
         )
     elif args.do_htune:
         logger.debug("Performing revdict hyperparameter tuning")

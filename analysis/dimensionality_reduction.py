@@ -16,6 +16,8 @@ class DimReduction:
         with open(ref_file, "r") as f:
             self.reference = json.load(f)
 
+        self.embedding_type = pred_file.split("_")[-1].split(".")[0]
+
         self.data = self.process_data()
 
         self.pred_tsne = None
@@ -27,14 +29,14 @@ class DimReduction:
         ref_df = pd.DataFrame(self.reference)
 
         merge_df = pd.merge(left=pred_df, right=ref_df, on="id", suffixes=("_pred", "_ref"))
-        merge_df["sgns_pred"] = [np.array(i) for i in merge_df["sgns_pred"]]
-        merge_df["sgns_ref"] = [np.array(i) for i in merge_df["sgns_ref"]]
+        merge_df[f"{self.embedding_type}_pred"] = [np.array(i) for i in merge_df[f"{self.embedding_type}_pred"]]
+        merge_df[f"{self.embedding_type}_ref"] = [np.array(i) for i in merge_df[f"{self.embedding_type}_ref"]]
 
         return merge_df
 
     def get_tsne_embeddings(self):
         tsne = TSNE(n_components=2, random_state=1, perplexity=50)
-        word_vectors = tsne.fit_transform(np.stack(np.concatenate([self.data.sgns_pred, self.data.sgns_ref])))
+        word_vectors = tsne.fit_transform(np.stack(np.concatenate([self.data[f"{self.embedding_type}_pred"], self.data[f"{self.embedding_type}_ref"]])))
 
         pred_word_vectors = word_vectors[:len(self.predictions)]
         ref_word_vectors = word_vectors[len(self.predictions):]
